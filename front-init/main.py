@@ -2,7 +2,7 @@ import http.server
 import socketserver
 import os
 import socket
-import threading
+import multiprocessing
 import json
 from datetime import datetime
 
@@ -26,7 +26,7 @@ class SimpleHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         return http.server.SimpleHTTPRequestHandler.do_GET(self)
     
     def do_POST(self):
-        if self.path == '/submit':
+        if self.path == '/message':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             post_data = post_data.decode('utf-8')
@@ -44,10 +44,10 @@ class SimpleHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 # Socket server for handling form data and saving to JSON file
 def socket_server():
-    while True:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(('0.0.0.0', SOCKET_PORT))
-            s.listen()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('0.0.0.0', SOCKET_PORT))
+        s.listen()
+        while True:
             conn, addr = s.accept()
             with conn:
                 data = conn.recv(1024)
@@ -76,14 +76,20 @@ def save_to_json(data):
     with open(file_path, 'w') as file:
         json.dump(existing_data, file, indent=4)
 
-if __name__ == "__main__":
+def start_http_server():
     os.chdir('templates')
     handler = SimpleHTTPRequestHandler
     httpd = socketserver.TCPServer(("", PORT), handler)
-    
-    # Start socket server in a separate thread
-    thread = threading.Thread(target=socket_server)
-    thread.start()
-
     print(f"Serving HTTP on port {PORT}")
     httpd.serve_forever()
+
+if __name__ == "__main__":
+    # Start HTTP server and socket server in separate processes
+    http_process = multiprocessing.Process(target=start_http_server)
+    socket_process = multiprocessing.Process(target=socket_server)
+    
+    http_process.start()
+    socket_process.start()
+    
+    http_process.join()
+    socket_process.join()
